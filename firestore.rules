@@ -1,0 +1,10 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /phonicsArcades/default {
+      allow read: if true;
+      // Replace the placeholder with the teacher UID from Firebase Authentication.
+      allow write: if request.auth != null && request.auth.uid == 'REPLACE_WITH_YOUR_TEACHER_UID';
+    }
+  }
+}
