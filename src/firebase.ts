@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { initializeFirestore } from 'firebase/firestore';
 
 const config = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -12,4 +12,5 @@ export const firebaseReady = Object.values(config).every(Boolean);
 // Placeholder config permits the website to show setup guidance before credentials are added.
 const app = initializeApp(firebaseReady ? config : { apiKey: 'missing', authDomain: 'missing.invalid', projectId: 'missing', appId: 'missing' });
 export const auth = getAuth(app);
-export const db = getFirestore(app);
+// Long polling can help when a browser or network interrupts Firestore streaming.
+export const db = initializeFirestore(app, { experimentalForceLongPolling: true });
