@@ -1,6 +1,6 @@
 import React,{useEffect,useMemo,useState} from 'react';
 import{onAuthStateChanged,signInWithEmailAndPassword,signOut,User}from'firebase/auth';
-import{doc,onSnapshot,setDoc}from'firebase/firestore';
+import{doc,onSnapshot,setDoc,getDocFromServer}from'firebase/firestore';
 import{auth,db,firebaseReady}from'./firebase';
 
 type Entry={id:string;word:string;sound:string;syllables:string[];emoji:string};
@@ -47,7 +47,24 @@ export default function App(){
  const prepare=(g:string,t:Entry,pool:Entry[])=>{setSelected('');setFeedback('');setTrainOrder([]);setHuntSelected([]);if(g==='hunt'){const candidates=shuffle([...pool.filter(x=>x.sound===t.sound).slice(0,3),...pool.filter(x=>x.sound!==t.sound).slice(0,3)]);setChoices(candidates);setHuntCorrect(candidates.filter(x=>x.word.toLowerCase().includes(t.sound.toLowerCase())).map(x=>x.id))}else{const distractors=shuffle(pool.filter(x=>x.id!==t.id)).slice(0,3);setChoices(shuffle([t,...distractors]));setSoundChoices(shuffle(unique([t.sound,...bank.sounds.filter(s=>s!==t.sound)]).slice(0,4)))}};
  const advance=(ok:boolean)=>{if(feedback)return;setFeedback(ok?'Bravo ! ⭐':'Essaie encore !');if(ok)setScore(v=>v+1)};
  const next=()=>{if(round+1>=questions.length){setGame('finish');return}const n=round+1;setRound(n);prepare(game,questions[n],eligible)};
- const save=async(b:Bank)=>{if(!user){setStatus('Connectez-vous comme enseignant.');return}if(!firebaseReady){setStatus('Configuration Firebase manquante.');return}setBusy(true);setStatus('Enregistrement en cours…');try{await setDoc(path,b);setStatus('Enregistré dans Firebase ! ✓')}catch(e){const msg=e instanceof Error?e.message:String(e);setStatus('Échec de l’enregistrement : '+msg)}finally{setBusy(false)}};
+ const save=async(b:Bank)=>{
+  if(!user){setStatus('Connectez-vous comme enseignant.');return}
+  if(!firebaseReady){setStatus('Configuration Firebase manquante.');return}
+  setBusy(true);setStatus('Vérification de la connexion Firebase…');
+  let timer:ReturnType<typeof setTimeout>|undefined;
+  try{
+    // A server-only read distinguishes a real server connection from cached snapshots.
+    await Promise.race([getDocFromServer(path),new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(new Error('Délai dépassé (15 s) : Firebase ne répond pas. La sauvegarde n’a pas été confirmée.')),15000)})]);
+    if(timer)clearTimeout(timer);
+    setStatus('Enregistrement en cours…');
+    await Promise.race([setDoc(path,b),new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(new Error('Délai dépassé (15 s) : écriture non confirmée. Vérifiez Firestore avant de réessayer.')),15000)})]);
+    setStatus('Enregistré dans Firebase ! ✓');
+  }catch(e){
+    const msg=e instanceof Error?e.message:String(e);
+    setStatus('Échec Firebase : '+msg);
+    console.error('Le Labo des Sons — diagnostic Firebase',e);
+  }finally{if(timer)clearTimeout(timer);setBusy(false)}
+ };
  const addWord=()=>{const w=edit.word.trim().toLowerCase(),syllables=syllableText.split(/[,\s-]+/).map(x=>x.trim()).filter(Boolean);if(!w||!edit.sound||!syllables.length){setStatus('Ajoutez un mot, son et ses syllabes.');return}const item={...edit,id:edit.id||String(Date.now()),word:w,syllables,emoji:edit.emoji||'⭐'};const list=edit.id?bank.entries.map(x=>x.id===edit.id?item:x):[...bank.entries,item];save({...bank,entries:list});setEdit({id:'',word:'',sound:'a',syllables:[],emoji:'⭐'});setSyllableText('')};
  const remove=(id:string)=>{if(confirm('Supprimer ce mot ?'))save({...bank,entries:bank.entries.filter(x=>x.id!==id)})};
  const changeSound=(s:string)=>save({...bank,activeSounds:bank.activeSounds.includes(s)?bank.activeSounds.filter(x=>x!==s):[...bank.activeSounds,s]});
